@@ -148,6 +148,8 @@ Valdi::Result<Valdi::Void> RasterContext::blitDeltaBitmapToOutputBitmap(const Re
         }
     }
 
+    auto deltaBitmapInfo = deltaBitmap->getInfo();
+
     // Copy bytes from our bitmap to the input bitmap
     auto inputBytes = deltaBitmap->lockBytes();
     if (inputBytes == nullptr) {
@@ -161,7 +163,19 @@ Valdi::Result<Valdi::Void> RasterContext::blitDeltaBitmapToOutputBitmap(const Re
     }
 
     if (fullReplace) {
-        std::memcpy(outputBytes, inputBytes, bitmapInfo.bytesLength());
+        if (deltaBitmapInfo.bytesLength() == bitmapInfo.bytesLength()) {
+            std::memcpy(outputBytes, inputBytes, bitmapInfo.bytesLength());
+        } else {
+            auto minRowBytes = std::min(deltaBitmapInfo.rowBytes, bitmapInfo.rowBytes);
+            auto* outputPtr = reinterpret_cast<uint8_t*>(outputBytes);
+            const auto* inputPtr = reinterpret_cast<const uint8_t*>(inputBytes);
+            for (int y = 0; y < bitmapInfo.height; y++) {
+                std::memcpy(outputPtr, inputPtr, minRowBytes);
+
+                inputPtr += deltaBitmapInfo.rowBytes;
+                outputPtr += bitmapInfo.rowBytes;
+            }
+        }
     } else {
         auto processProc = SkBlitRow::Factory32(SkBlitRow::kSrcPixelAlpha_Flag32);
 
@@ -174,7 +188,7 @@ Valdi::Result<Valdi::Void> RasterContext::blitDeltaBitmapToOutputBitmap(const Re
                         bitmapInfo.width,
                         255);
 
-            inputPtr += bitmapInfo.rowBytes;
+            inputPtr += deltaBitmapInfo.rowBytes;
             outputPtr += bitmapInfo.rowBytes;
         }
     }
@@ -409,7 +423,9 @@ bool RasterContext::needsNewBitmap(const Valdi::BitmapInfo& inputBitmapInfo) con
     }
 
     auto lastBitmapInfo = _lastBitmap->getInfo();
-    return lastBitmapInfo != inputBitmapInfo;
+    return lastBitmapInfo.width != inputBitmapInfo.width || lastBitmapInfo.height != inputBitmapInfo.height ||
+           lastBitmapInfo.colorType != inputBitmapInfo.colorType ||
+           lastBitmapInfo.alphaType != inputBitmapInfo.alphaType;
 }
 
 } // namespace snap::drawing
