@@ -33,5 +33,6 @@ data class ValdiTweaks(
          * on some devices.
          */
          val enableHardwareLayerWorkaround: Boolean = false,
-         val downsampleLargeBlur: Boolean = false
+         val downsampleLargeBlur: Boolean = false,
+         val maxViewOperationsProcessingTimeMs: Int = 0,
 )

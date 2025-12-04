@@ -81,7 +81,7 @@ public:
     bool supportsClassNameNatively(const Valdi::StringBox& className) override;
 
     Valdi::Ref<DeferredViewOperations> makeViewOperations();
-    void flushViewOperations(Valdi::Ref<DeferredViewOperations> viewOperations);
+    void flushViewOperations(Valdi::Ref<DeferredViewOperations> viewOperations, bool sync);
 
     Valdi::Value createViewNodeWrapper(const Valdi::Ref<Valdi::ViewNode>& viewNode,
                                        bool wrapInPlatformReference) override;
@@ -113,7 +113,7 @@ private:
     JavaMethod<VoidType, int32_t, std::string> _presentDebugMessageMethod;
     JavaMethod<VoidType, int32_t, std::string, std::string, std::string> _onNonFatal;
     JavaMethod<VoidType, std::string, std::string, std::string, bool> _onJsCrash;
-    JavaMethod<VoidType, JavaObject, ObjectArray> _performViewOperationsMethod;
+    JavaMethod<VoidType, JavaObject, ObjectArray, bool> _performViewOperationsMethod;
     JavaMethod<int64_t, JavaObject, int64_t, int32_t, int32_t, int32_t, int32_t, bool> _measureMethod;
     JavaMethod<ViewType, JavaObject> _getMeasurerPlaceholderViewMethod;
 
@@ -127,7 +127,7 @@ private:
     ResolvedJavaClass& getClassForName(const Valdi::StringBox& className, bool fallbackIfNeeded);
     ResolvedJavaClass& lockFreeGetClassForName(const Valdi::StringBox& className, bool fallbackIfNeeded);
 
-    void doFlushViewOperations(const std::optional<SerializedViewOperations>& operations);
+    void doFlushViewOperations(const std::optional<SerializedViewOperations>& operations, bool sync);
 
     inline int32_t convertPoint(float point) const;
 };

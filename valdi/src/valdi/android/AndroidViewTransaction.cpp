@@ -29,7 +29,7 @@ AndroidViewTransaction::AndroidViewTransaction(ViewManager& viewManager) : _view
 AndroidViewTransaction::~AndroidViewTransaction() = default;
 
 void AndroidViewTransaction::flush(bool sync) {
-    _viewManager.flushViewOperations(std::move(_viewOperations));
+    _viewManager.flushViewOperations(std::move(_viewOperations), sync);
 }
 
 void AndroidViewTransaction::willUpdateRootView(const Valdi::Ref<Valdi::View>& view) {

@@ -1,5 +1,9 @@
 package com.snap.valdi.nativebridge
 
+import android.os.SystemClock
+import android.os.Handler
+import android.os.Looper
+import android.view.Choreographer
 import android.view.View
 import com.snap.valdi.ViewRef
 import com.snap.valdi.attributes.AttributeHandlerDelegate
@@ -18,41 +22,86 @@ import com.snap.valdi.exceptions.ValdiFatalException
 import com.snap.valdi.exceptions.messageWithCauses
 import com.snap.valdi.extensions.ViewUtils
 import com.snap.valdi.logger.Logger
+import com.snap.valdi.utils.info
 import com.snap.valdi.utils.error
 import com.snap.valdi.utils.trace
+import com.snap.valdi.utils.runOnMainThreadDelayed
 import com.snap.valdi.views.ValdiRootView
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-class ValdiViewManagerOperationsManager(private val logger: Logger) {
-
-    private var pendingOperations: ValdiViewManagerOperations? = null
+class ValdiViewManagerOperationsManager(
+    private val logger: Logger,
+    private val maxViewOperationsProcessingTimeMs: Int,
+) {
+    private var pendingOperations = ArrayDeque<ValdiViewManagerOperations>()
     private var currentAnimator: ValdiAnimator? = null
 
+    private var lastOperation = 0
+
+    // Controls wether to throttle when maxViewOperationsProcessingTimeMs
+    // is exceeded. maxViewOperationsProcessingTimeMs = 0 means no throttling
+    private val throttlingEnabled = maxViewOperationsProcessingTimeMs > 0
+
+    // Indicates there are remaining updates to be completed later
+    private var throttled = false
+
     fun appendViewOperations(byteBuffer: ByteBuffer, attachedValues: Array<Any>?) {
-        val operations = ValdiViewManagerOperations(byteBuffer.order(ByteOrder.LITTLE_ENDIAN),
-            attachedValues ?: emptyArray())
+        val operations = ValdiViewManagerOperations(byteBuffer.order(ByteOrder.LITTLE_ENDIAN), attachedValues ?: emptyArray())
+        pendingOperations.add(operations)
+    }
 
-        var pendingOperations = this.pendingOperations
-        if (pendingOperations == null) {
-            this.pendingOperations = operations
-        } else {
-            while (pendingOperations!!.next != null) {
-                pendingOperations = pendingOperations.next
+    // replace all direct buffers because these are released after calling
+    // flushViewOperations
+    private fun retainPendingOperations() {
+        pendingOperations.replaceAll { operation ->
+            if (operation.byteBuffer.isDirect) {
+                val src = operation.byteBuffer
+                val bufferCopy = ByteBuffer
+                    .allocate(src.remaining())
+                    .order(ByteOrder.LITTLE_ENDIAN)
+                bufferCopy.put(src)
+                bufferCopy.flip()
+                ValdiViewManagerOperations(bufferCopy, operation.attachedValues)
+            } else {
+                operation
             }
-
-            pendingOperations.next = operations
         }
     }
 
-    fun flushViewOperations() {
-        while (this.pendingOperations != null) {
-            val operations = this.pendingOperations!!
+    private fun shouldThrottle(t: Long, deadline: Long): Boolean =
+        throttlingEnabled && t > deadline
+
+    fun flushViewOperations(sync: Boolean) {
+        if (this.throttled && !pendingOperations.isEmpty() && !sync) {
+            // return if there is already a pending completion scheduled
+            // buf we need to make sure all the buffers are safe
+            retainPendingOperations()
+            return
+        }
+        doFlushViewOperations(sync, false)
+    }
+    
+    fun doFlushViewOperations(sync: Boolean, resume: Boolean) {
+        // We have a limited time window to process as many pending operations as we can
+        // After that we will return to the system looper and schedule another pass to
+        // complete the rest. This is to avoid spending too much time in a function and
+        // being marked as ANR.
+        var processingStartTime = SystemClock.elapsedRealtime()
+        val deadline = processingStartTime + maxViewOperationsProcessingTimeMs
+
+        // Exit the loop if the deadline is passed. We will process at least one
+        // operation becase in the beginning, processingStartTime is guaranteed
+        // to be less than the deadline.
+        while (!this.pendingOperations.isEmpty() &&
+                (sync || !shouldThrottle(processingStartTime, deadline))) {
+            val operations = this.pendingOperations.first()
             val buffer = operations.byteBuffer
             val attachedValues = operations.attachedValues
 
-            var lastOperation = 0
-            while (buffer.hasRemaining()) {
+            // Exit the loop if the deadline is passed
+            while (buffer.hasRemaining() &&
+                   (sync || !shouldThrottle(processingStartTime, deadline))) {
                 val header = buffer.int
                 val operation = header and 0xFF
                 val hasValue = ((header shr 8) and 0xFF) != 0
@@ -62,7 +111,7 @@ class ValdiViewManagerOperationsManager(private val logger: Logger) {
                         beginRenderingView(buffer, attachedValues, hasValue)
                     }
                     OP_END_RENDERING_VIEW -> {
-                        endRenderingView(buffer, attachedValues, hasValue)
+                        endRenderingView(buffer, attachedValues, hasValue, resume)
                     }
                     OP_MOVED_TO_TREE -> {
                         movedToTree(buffer, attachedValues, hasValue)
@@ -113,14 +162,27 @@ class ValdiViewManagerOperationsManager(private val logger: Logger) {
                 }
 
                 lastOperation = operation
+                
+                // update the timestamp
+                processingStartTime = SystemClock.elapsedRealtime()
             }
-
-            if (operations === this.pendingOperations) {
-                this.pendingOperations = operations.next
+            if (!buffer.hasRemaining() && operations == this.pendingOperations.firstOrNull()) {
+                this.pendingOperations.removeAt(0)
+                this.currentAnimator = null // reset animator after completing a buffer
             }
         }
 
-        this.currentAnimator = null
+        if (!this.pendingOperations.isEmpty()) {
+            // If there are still pending operations, it means we failed to
+            // process all pending operations within the time window. We need to
+            // schedule another pass on the main thread to finish the rest.
+            this.throttled = true
+            retainPendingOperations()
+            Choreographer.getInstance().postFrameCallback({
+                this.throttled = false
+                this.doFlushViewOperations(false, true)
+            })
+        }
     }
 
     private fun getRootView(buffer: ByteBuffer, attachedValues: Array<Any>): ValdiRootView? {
@@ -137,9 +199,13 @@ class ValdiViewManagerOperationsManager(private val logger: Logger) {
         getRootView(buffer, attachedValues)?.valdiUpdatesBegan()
     }
 
-    private fun endRenderingView(buffer: ByteBuffer, attachedValues: Array<Any>, hasValue: Boolean) {
+    private fun endRenderingView(buffer: ByteBuffer, attachedValues: Array<Any>, hasValue: Boolean, async: Boolean) {
         val layoutDidBecomeDirty = hasValue
-        getRootView(buffer, attachedValues)?.valdiUpdatesEnded(layoutDidBecomeDirty)
+        if (async) {
+            getRootView(buffer, attachedValues)?.valdiUpdatesEndedAsync(layoutDidBecomeDirty)
+        } else {
+            getRootView(buffer, attachedValues)?.valdiUpdatesEnded(layoutDidBecomeDirty)
+        }
     }
 
     private fun handleApplyFailure(delegate: AttributeHandlerDelegate?, viewRef: ViewRef?, exception: Throwable) {
@@ -165,7 +231,11 @@ class ValdiViewManagerOperationsManager(private val logger: Logger) {
         val loadedAsset: Any? = if (hasValue) attachedValues[buffer.int] else null
 
         trace({"Valdi.applyImageAsset"}) {
-            ref.onLoadedAssetChanged(loadedAsset, shouldDrawFlipped)
+            try {
+                ref.onLoadedAssetChanged(loadedAsset, shouldDrawFlipped)
+            } catch (e: ValdiException) {
+                logger.error("Failed to set loaded asset: ${e.message}")
+            }
         }
     }
 

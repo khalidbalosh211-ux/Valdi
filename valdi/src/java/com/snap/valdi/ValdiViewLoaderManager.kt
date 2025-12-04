@@ -208,8 +208,9 @@ class ValdiRuntimeManager(context: Context,
         }
         ValdiLeakTracker.enabled = tweaks?.enableLeakTracker == true
 
-        viewManager = ValdiViewManager(context, logger, tweaks?.disableAnimations
-                ?: false, viewRefSupport)
+        viewManager = ValdiViewManager(context, logger,
+            tweaks?.disableAnimations ?: false, viewRefSupport,
+            tweaks?.maxViewOperationsProcessingTimeMs ?: 0)
 
         contextManager = ContextManager(nativeBridge, logger)
 

@@ -484,6 +484,19 @@ open class ValdiRootView: ValdiView, Disposable {
             applyValdiLayout()
         }
     }
+    internal fun valdiUpdatesEndedAsync(layoutDidBecomeDirty: Boolean) {
+        valdiUpdatesCount--
+        if (valdiUpdatesCount == 0 && !isLayoutRequested) {
+            // This is called outside of normal update cycle
+            // so we can't directly call applyValdiLayout().
+            // Otherwise we can get java.lang.IllegalStateException
+            // due to calling layout in the middle of RecyclerView’s
+            // layout stage
+            post {
+                requestLayout()
+            }
+        }
+    }
 
     private fun updateViewInflationState() {
         updateViewInflationState(isAttachedToWindow)
