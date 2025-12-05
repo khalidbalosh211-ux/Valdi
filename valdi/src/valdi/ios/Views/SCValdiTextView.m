@@ -283,6 +283,8 @@ typedef NS_ENUM(NSUInteger, SCValdiTextViewTextGravity) {
     _textView.textContainer.lineFragmentPadding = _effectsLayoutManager.backgroundPadding;
     CGFloat textContainerVerticalInset = _effectsLayoutManager.backgroundPadding / 2.0;
     _textView.textContainerInset = UIEdgeInsetsMake(textContainerVerticalInset, 0, textContainerVerticalInset, 0);
+    // Mark the textview to display again as the layout manager can get cached for only a color change
+    [_textView setNeedsDisplay];
 }
 
 
