@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 
 set -e
+set -u
 set -x
 
+(
+
 # Intended to be run from open_source/
+cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
 # High level core targets
 bzl build //valdi:valdi
@@ -20,5 +24,6 @@ if [[ $(uname) != Linux ]] ; then
 
     # Android depencencies have issues in ci, needs to be fixed
     # bzl build //apps/helloworld:hello_world_android
-
 fi
+
+)

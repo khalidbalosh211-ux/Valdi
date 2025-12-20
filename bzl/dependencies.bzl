@@ -31,16 +31,16 @@ def setup_dependencies(workspace_root = None):
 
     http_archive(
         name = "com_google_protobuf",
-        sha256 = "da288bf1daa6c04d03a9051781caa52aceb9163586bff9aa6cfb12f69b9395aa",
+        #sha256 = "",
         strip_prefix = "protobuf-27.0",
         url = "https://github.com/protocolbuffers/protobuf/releases/download/v27.0/protobuf-27.0.tar.gz",
     )
 
     http_archive(
         name = "rules_cc",
-        sha256 = "abc605dd850f813bb37004b77db20106a19311a96b2da1c92b789da529d28fe1",
-        strip_prefix = "rules_cc-0.0.17",
-        urls = ["https://github.com/bazelbuild/rules_cc/releases/download/0.0.17/rules_cc-0.0.17.tar.gz"],
+        #sha256 = "",
+        strip_prefix = "rules_cc-0.0.12",
+        urls = ["https://github.com/bazelbuild/rules_cc/releases/download/0.0.12/rules_cc-0.0.12.tar.gz"],
     )
 
     http_archive(
@@ -277,13 +277,21 @@ def setup_dependencies(workspace_root = None):
         urls = ["https://github.com/harfbuzz/harfbuzz/releases/download/12.2.0/harfbuzz-12.2.0.tar.xz"],
     )
 
-    # From https://github.com/protocolbuffers/protobuf/releases/tag/v3.20.0
+    http_archive(
+        name = "com_google_absl",
+        type = "tar.gz",
+        strip_prefix = "abseil-cpp-20230802.0",
+        url = "https://github.com/abseil/abseil-cpp/archive/refs/tags/20230802.0.tar.gz",
+        sha256 = "59d2976af9d6ecf001a81a35749a6e551a335b949d34918cfade07737b9d93c5",
+    )
+
+    # From https://github.com/protocolbuffers/protobuf/releases/tag/v27.0
     http_archive(
         name = "protobuf_cpp",
-        strip_prefix = "protobuf-3.20.0",
-        build_file = "@valdi//third-party/protobuf_cpp:protobuf_cpp.BUILD",
-        url = "https://github.com/protocolbuffers/protobuf/releases/download/v3.20.0/protobuf-all-3.20.0.tar.gz",
-        integrity = "sha256-ocB26D9FtkueMK6JqZC6Sq6ffcGKypD3aQ9FjcWuBoE=",
+        strip_prefix = "protobuf-27.0",
+        #build_file = "@valdi//third-party/protobuf_cpp:protobuf_cpp.BUILD",
+        url = "https://github.com/protocolbuffers/protobuf/releases/download/v27.0/protobuf-27.0.tar.gz",
+        #integrity = "sha256-ocB26D9FtkueMK6JqZC6Sq6ffcGKypD3aQ9FjcWuBoE=",
     )
 
     http_archive(
@@ -299,6 +307,16 @@ def setup_dependencies(workspace_root = None):
         build_file = "@valdi//third-party/xxhash:xxhash.BUILD",
         integrity = "sha256-uu4Mav1PAxZd56TmeYjRbw8rJXtR0OPLkZCTAqJqecQ=",
         url = "https://github.com/Cyan4973/xxHash/archive/refs/tags/v0.8.2.tar.gz",
+    )
+
+    http_archive(
+        name = "zlib",
+        build_file = Label("@valdi//third-party/zlib:zlib.BUILD"),
+        #sha256 = "d14c38e313afc35a9a8760dadf26042f51ea0f5d154b0630a31da0540107fb98",
+        strip_prefix = "zlib-1.3.1",
+        urls = [
+            "https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.xz",
+        ],
     )
 
     # Transitive dependency of skia

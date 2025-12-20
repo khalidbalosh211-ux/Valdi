@@ -417,8 +417,8 @@ cc_library(
     ]),
     hdrs = glob(["protogen-lite/valdi/**/*.h"]),
     copts = COMMON_COMPILE_FLAGS + [
-        # Suppress compiler warnings from protof generated sources
         "-Wno-deprecated-declarations",
+        "-Wno-gcc-compat",
         "-Wno-zero-length-array",
     ],
     defines = ["GRPC_USE_PROTO_LITE"],
